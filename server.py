@@ -25,6 +25,7 @@ NUMBER_ACTUATORS = int(os.getenv("REACT_APP_NUMBER_ACTUATOR", 8))
 WINDOW_SIZE = int(os.getenv("REACT_APP_WINDOW_SAVING", 10000))
 WS_PORT = int(os.getenv("WS_PORT", 8000))
 FLASK_PORT = int(os.getenv("FLASK_PORT", 5000))
+ALSA_DEVICE_NAME = os.getenv("ALSA_DEVICE_NAME", None)
 ALSA_DEVICE_INDEX = int(os.getenv("ALSA_DEVICE_INDEX", 0))
 
 mapping_str = os.getenv("REACT_APP_MAPPING", "0,1,2,3,4,5,6,7")
@@ -40,20 +41,28 @@ if not DEBUG:
 
     def connect():
         devices = sd.query_devices()
-        if ALSA_DEVICE_INDEX >= len(devices):
-            raise RuntimeError(
-                f"Device index {ALSA_DEVICE_INDEX} not found. "
-                f"Available devices: {len(devices)}"
-            )
-        device = devices[ALSA_DEVICE_INDEX]
-        print(f"Selected device [{ALSA_DEVICE_INDEX}]: {device['name']}")
+
+        # Prefer name-based lookup if provided
+        if ALSA_DEVICE_NAME:
+            device_id = None
+            for i, device in enumerate(devices):
+                if ALSA_DEVICE_NAME.lower() in device['name'].lower():
+                    device_id = i
+                    break
+            if device_id is None:
+                raise RuntimeError(
+                    f"Device '{ALSA_DEVICE_NAME}' not found.\n"
+                    f"Available devices:\n" +
+                    "\n".join(f"  [{i}] {d['name']}"
+                            for i, d in enumerate(devices))
+                )
+        else:
+            device_id = ALSA_DEVICE_INDEX
+
+        device = devices[device_id]
+        print(f"Selected device [{device_id}]: {device['name']}")
         print(f"Output channels: {device['max_output_channels']}")
-        if device['max_output_channels'] < NUMBER_ACTUATORS:
-            raise RuntimeError(
-                f"Device only has {device['max_output_channels']} "
-                f"output channels, need {NUMBER_ACTUATORS}"
-            )
-        sd.default.device = (None, ALSA_DEVICE_INDEX)
+        sd.default.device = (None, device_id)
 
 
 def audio_callback(outdata, frames, time, status):
