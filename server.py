@@ -23,7 +23,7 @@ NUMBER_ACTUATORS = int(os.getenv("REACT_APP_NUMBER_ACTUATOR", 0))
 WINDOW_SIZE = int(os.getenv("REACT_APP_WINDOW_SAVING", 10000))
 
 # Parse MAPPING as a dictionary
-mapping_str = os.getenv("MAPPING", "0,1,2,3,4,5")
+mapping_str = os.getenv("REACT_APP_MAPPING", "0,1,2,3,4,5,6,7")
 # # mapping_str = ("1,2,3,4.5,6")
 # # mapping_str = ("2,3,4,5,6,7")
 #mapping_str = ("2,3,5,7,6,4") # OVER THE EAR
@@ -49,7 +49,7 @@ if not DEBUG:
                 device_id = i
                 break
         if device_id is None:
-            raise RuntimeError("No suitable output device found with at least 8 channels.")
+            raise RuntimeError("No suitable output device found with at least 16 channels.")
 
         sd.default.device = (None, device_id)
         print(f"Selected audio output device with output channels: {sd.query_devices(device_id)['max_output_channels']}")
@@ -147,10 +147,10 @@ async def handler(websocket):
 async def main():
     #launch a new thread for the HTTP server
     print("Starting Flask server on port 5000")
-    threading.Thread(target=lambda: app.run(port=5000)).start()
+    threading.Thread(target=lambda: app.run(host="0.0.0.0", port=5000)).start()
 
-    async with websockets.serve(handler, "localhost", 8000):
-        print("WebSocket server listening on ws://localhost:8000")
+    async with websockets.serve(handler, "0.0.0.0", 8000):
+        print("WebSocket server listening on ws://0.0.0.0:8000")
         await asyncio.Future()  # run forever
 
 app = flask.Flask(__name__)
