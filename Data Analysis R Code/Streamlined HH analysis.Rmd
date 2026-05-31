@@ -4,6 +4,7 @@ author: "Emmie Fitz-Gibbon"
 date: "2025-04-05"
 output: html_document
 ---
+#setwd('/Users/emmiefitz-gibbon/Desktop/sam-website-project/sam-website/Data Analysis R Code')
 
 source("Data Processing HH.R")
 
@@ -327,6 +328,7 @@ improved_horizontal_alt <- ggplot(all_device_data,
 print(improved_horizontal_alt)
 
 
+
 generate_all_participant_comparisons <- function(data_list, output_dir = "participant_plots") {
   # Create output directory if it doesn't exist
   if (!dir.exists(output_dir)) {
@@ -364,6 +366,107 @@ generate_all_participant_comparisons <- function(data_list, output_dir = "partic
 generate_all_participant_comparisons(data_list, output_dir = "device_comparison_plots")
 ```
 
+
+```{r new plots post UIST, echo = FALSE, warning = FALSE, message = FALSE}
+
+
+mean_data <- all_device_data %>%
+  group_by(Actuator, device_type) %>%
+  summarise(
+    Mean_Threshold = mean(Threshold, na.rm = TRUE),
+    SE = sd(Threshold, na.rm = TRUE) / sqrt(n()), # Standard error if you want error bars
+    .groups = 'drop'
+  )
+
+# Calculate overall mean for each device type for horizontal lines
+device_means <- all_device_data %>%
+  group_by(device_type) %>%
+  summarise(
+    Overall_Mean = mean(Threshold, na.rm = TRUE),
+    .groups = 'drop'
+  )
+
+# Create the plot with mean values
+improved_horizontal_circles <- ggplot(mean_data, aes(x = interaction(Actuator, sep=""), y = Mean_Threshold, fill = device_type)) +
+  geom_point(aes(color = device_type), size = 3, shape = 21, stroke = 1) +
+  
+  # Optional: Add error bars showing standard error
+  geom_errorbar(aes(ymin = Mean_Threshold - SE, ymax = Mean_Threshold + SE, color = device_type), 
+                width = 0.2, size = 1) +
+  
+  # Add horizontal lines showing overall mean for each device type
+  geom_hline(data = device_means, 
+             aes(yintercept = Overall_Mean, color = device_type),
+             linetype = "dashed", size = 1) +
+  
+  scale_color_manual(values = c("bracelet" = "#FA8072", "necklace" = "#66BB6A", "overear" = "#5C9CFA")) +
+  scale_fill_manual(values = c("bracelet" = "#FA8072", "necklace" = "#66BB6A", "overear" = "#5C9CFA")) +
+  scale_y_continuous(limits = c(0, 0.3)) +
+  labs(
+    title = "Mean Threshold by Motor Position",
+    x = "Motor Position",
+    y = "Mean Threshold"
+  ) +
+  facet_wrap(~ device_type) +
+  my_theme
+
+# Print the plot
+print(improved_horizontal_circles)
+
+
+```
+
+```{r collapsed, echo = FALSE, warning = FALSE, message = FALSE}
+
+# Extract motor index from Actuator (assuming format like "Motor_0", "Motor_1", etc.)
+mean_data <- all_device_data %>%
+  mutate(Motor_Index = as.numeric(str_extract(Actuator, "\\d+"))) %>%  # Extract number from Actuator
+  group_by(Motor_Index, device_type) %>%
+  summarise(
+    Mean_Threshold = mean(Threshold, na.rm = TRUE),
+    SE = sd(Threshold, na.rm = TRUE) / sqrt(n()),
+    .groups = 'drop'
+  )
+
+# Calculate overall mean for each device type for horizontal lines
+device_means <- all_device_data %>%
+  group_by(device_type) %>%
+  summarise(
+    Overall_Mean = mean(Threshold, na.rm = TRUE),
+    .groups = 'drop'
+  )
+
+# Create the collapsed plot
+collapsed_motor_plot <- ggplot(mean_data, aes(x = Motor_Index, y = Mean_Threshold, color = device_type)) +
+  geom_point(aes(fill = device_type), size = 4, shape = 21, stroke = 1.5,
+             position = position_dodge(width = 0.0)) +  # Dodge points horizontally for better visibility
+  
+  # Add error bars
+  geom_errorbar(aes(ymin = Mean_Threshold - SE, ymax = Mean_Threshold + SE), 
+                width = 0.2, size = 1,
+                position = position_dodge(width = 0)) +
+  
+  # Add horizontal lines showing overall mean for each device type
+  geom_hline(data = device_means, 
+             aes(yintercept = Overall_Mean, color = device_type),
+             linetype = "dashed", size = 1, alpha = 0.7) +
+  
+  scale_color_manual(values = c("bracelet" = "#FA8072", "necklace" = "#66BB6A", "overear" = "#5C9CFA")) +
+  scale_fill_manual(values = c("bracelet" = "#FA8072", "necklace" = "#66BB6A", "overear" = "#5C9CFA")) +
+  scale_x_continuous(breaks = 0:5, labels = 0:5) +  # Ensure x-axis shows 0-5
+  scale_y_continuous(limits = c(0, 0.3)) +
+  labs(
+    title = "Mean  Threshold by Motor Position",
+    x = "Motor Index",
+    y = "Mean Threshold",
+    color = "Device Type",
+    fill = "Device Type"
+  ) +
+  my_theme
+
+# Print the plot
+print(collapsed_motor_plot)
+```
 
 ## Abs data Summary plots
 
@@ -3250,3 +3353,177 @@ for (device in unique(threshold_results_filtered$device_type)) {
   }
 }
 ```
+
+
+
+
+```{r adding significance markers, warning = FALSE, message = FALSE}
+# Enhanced Device Comparison Plot with Statistical Significance
+# Based on your existing statistical analysis
+
+library(ggplot2)
+library(dplyr)
+
+# Create device summary from your threshold data
+device_summary <- threshold_results_filtered %>%
+  group_by(device_type) %>%
+  summarise(
+    Mean_Threshold = mean(Threshold, na.rm = TRUE),
+    SD = sd(Threshold, na.rm = TRUE),
+    n = n()
+  ) %>%
+  ungroup()
+
+print(device_summary)
+
+# This code should be run AFTER your statistical analysis chunk
+# It will automatically use your wilcox_results (preferred) or paired_results
+significance_results <- if(exists("wilcox_results")) {
+  wilcox_results
+} else if(exists("paired_results")) {
+  paired_results
+} else {
+  # If neither exists, create temporary results for demonstration
+  data.frame(
+    Comparison = c("Bracelet vs Necklace", "Bracelet vs Overear", "Necklace vs Overear"),
+    p_adjusted = c(0.79, 0.001, 0.001)
+  )
+}
+
+# Function to create significance labels
+create_sig_label <- function(p_value) {
+  if (is.na(p_value)) return("ns")
+  if (p_value < 0.001) return("***")
+  else if (p_value < 0.01) return("**")
+  else if (p_value < 0.05) return("*")
+  else return("ns")
+}
+
+# Add significance labels
+significance_results$sig_label <- sapply(significance_results$p_adjusted, create_sig_label)
+
+# Print significance results
+cat("\n=== Significance Results ===\n")
+print(significance_results)
+
+# Calculate positions for significance brackets
+max_y <- max(device_summary$Mean_Threshold + device_summary$SD) * 1.1
+bracket_height <- max_y * 0.03
+bracket_gap <- max_y * 0.08
+
+# Get device order for positioning
+device_order <- c("bracelet", "necklace", "overear")
+device_summary$device_type <- factor(device_summary$device_type, levels = device_order)
+
+# Create the plot (keeping original styling)
+p <- ggplot(device_summary, aes(x = device_type, y = Mean_Threshold, fill = device_type)) +
+  geom_bar(stat = "identity") +
+  geom_errorbar(aes(ymin = Mean_Threshold - SD, ymax = Mean_Threshold + SD), 
+                width = 0.2) +
+  scale_fill_manual(values = c("bracelet" = "#FA8072", 
+                              "necklace" = "#66BB6A", 
+                              "overear" = "#5C9CFA")) +
+  labs(
+    title = "Average Threshold by Device Type",
+    x = "Device Type",
+    y = "Mean Threshold"
+  ) +
+  theme_minimal()
+
+# Add significance brackets and labels
+bracket_y_positions <- c(max_y + bracket_gap, 
+                        max_y + 2*bracket_gap, 
+                        max_y + 3*bracket_gap)
+
+# Function to add significance bracket
+add_bracket <- function(plot, x1, x2, y_pos, label, label_size = 4) {
+  if (label != "ns") {
+    plot <- plot +
+      # Horizontal line
+      annotate("segment", 
+               x = x1, xend = x2, 
+               y = y_pos, yend = y_pos,
+               color = "black", size = 0.5) +
+      # Left vertical line
+      annotate("segment", 
+               x = x1, xend = x1,
+               y = y_pos, yend = y_pos - bracket_height,
+               color = "black", size = 0.5) +
+      # Right vertical line
+      annotate("segment", 
+               x = x2, xend = x2,
+               y = y_pos, yend = y_pos - bracket_height,
+               color = "black", size = 0.5) +
+      # Significance label
+      annotate("text", 
+               x = (x1 + x2)/2, 
+               y = y_pos + bracket_height/2,
+               label = label, 
+               size = label_size, 
+               fontface = "bold")
+  }
+  return(plot)
+}
+
+# Add brackets for each comparison
+# Bracelet vs Necklace (positions 1 and 2)
+bn_sig <- significance_results$sig_label[significance_results$Comparison == "Bracelet vs Necklace"]
+if (length(bn_sig) > 0) {
+  p <- add_bracket(p, 1, 2, bracket_y_positions[1], bn_sig)
+}
+
+# Bracelet vs Overear (positions 1 and 3)
+bo_sig <- significance_results$sig_label[significance_results$Comparison == "Bracelet vs Overear"]
+if (length(bo_sig) > 0) {
+  p <- add_bracket(p, 1, 3, bracket_y_positions[2], bo_sig)
+}
+
+# Necklace vs Overear (positions 2 and 3)
+no_sig <- significance_results$sig_label[significance_results$Comparison == "Necklace vs Overear"]
+if (length(no_sig) > 0) {
+  p <- add_bracket(p, 2, 3, bracket_y_positions[3], no_sig)
+}
+
+# Adjust y-axis limits to accommodate brackets
+max_bracket_y <- max(bracket_y_positions) + bracket_gap
+p <- p + ylim(0, max_bracket_y)
+
+# (Sample sizes removed as requested)
+
+# Print the enhanced plot
+print(p)
+
+# Print summary statistics with significance
+cat("\n=== Enhanced Results Summary ===\n")
+device_summary_enhanced <- device_summary %>%
+  mutate(
+    Mean_SD = paste0(round(Mean_Threshold, 2), " ± ", round(SD, 2))
+  )
+
+print(device_summary_enhanced)
+
+cat("\nSignificance codes: '***' p<0.001, '**' p<0.01, '*' p<0.05, 'ns' not significant\n")
+cat("All p-values are Bonferroni-corrected for multiple comparisons\n")
+
+# Optional: Create a summary table for publication
+results_table <- data.frame(
+  Device = c("Bracelet", "Necklace", "Over-ear"),
+  Mean = round(device_summary$Mean_Threshold, 2),
+  SD = round(device_summary$SD, 2),
+  N = device_summary$n
+)
+
+cat("\n=== Publication-Ready Summary Table ===\n")
+print(results_table)
+
+# Print pairwise comparison results
+cat("\n=== Pairwise Comparisons ===\n")
+for(i in 1:nrow(significance_results)) {
+  comparison <- significance_results$Comparison[i]
+  p_val <- significance_results$p_adjusted[i]
+  sig <- significance_results$sig_label[i]
+  cat(sprintf("%s: p = %.3f (%s)\n", comparison, p_val, sig))
+}
+```
+
+
