@@ -151,7 +151,8 @@ async def handler(websocket):
 async def main():
     print(f"Starting Flask server on port {FLASK_PORT}")
     threading.Thread(
-        target=lambda: app.run(host="0.0.0.0", port=FLASK_PORT)
+        target=lambda: app.run(host="0.0.0.0", port=FLASK_PORT),
+        daemon=True                                                  # ← add this
     ).start()
     async with websockets.serve(handler, "0.0.0.0", WS_PORT):
         print(f"WebSocket server listening on ws://0.0.0.0:{WS_PORT}")
@@ -182,7 +183,7 @@ if __name__ == "__main__":
                             blocksize=0,
                             dtype='float32') as stream:
             print(f"Stream opened: {stream.channels}ch @ "
-                  f"{stream.samplerate}Hz on device {ALSA_DEVICE_INDEX}")
+                  f"{stream.samplerate}Hz on device {ALSA_DEVICE_NAME}")
             asyncio.run(main())
     else:
         print("Running in debug mode.")
