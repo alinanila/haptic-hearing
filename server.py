@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 import os
 import logging
 import sys
+import threading as _threading
 
 # Load env file passed as argument, or default .env
 env_file = sys.argv[1] if len(sys.argv) > 1 else "./.env"
@@ -42,19 +43,35 @@ if not DEBUG:
     def connect():
         devices = sd.query_devices()
 
-        # Prefer name-based lookup if provided
         if ALSA_DEVICE_NAME:
+            # Map ALSA card name to device index via /proc/asound/cards
             device_id = None
-            for i, device in enumerate(devices):
-                if ALSA_DEVICE_NAME.lower() in device['name'].lower():
-                    device_id = i
-                    break
+            try:
+                with open("/proc/asound/cards", "r") as f:
+                    cards = f.read()
+                for line in cards.splitlines():
+                    if ALSA_DEVICE_NAME in line:
+                        # Line format: " 0 [HapticPCB1      ]: ..."
+                        card_index = int(line.strip().split()[0])
+                        # Find matching sounddevice entry for hw:<card_index>
+                        hw_str = f"hw:{card_index},"
+                        for i, device in enumerate(devices):
+                            if hw_str in device['name']:
+                                device_id = i
+                                break
+                        break
+            except Exception as e:
+                print(f"Warning: could not read /proc/asound/cards: {e}")
+
             if device_id is None:
+                available = "\n".join(
+                    f"  [{i}] {d['name']}"
+                    for i, d in enumerate(devices)
+                )
                 raise RuntimeError(
-                    f"Device '{ALSA_DEVICE_NAME}' not found.\n"
-                    f"Available devices:\n" +
-                    "\n".join(f"  [{i}] {d['name']}"
-                            for i, d in enumerate(devices))
+                    f"Device '{ALSA_DEVICE_NAME}' not found in "
+                    f"/proc/asound/cards.\n"
+                    f"Available sounddevice entries:\n{available}"
                 )
         else:
             device_id = ALSA_DEVICE_INDEX
@@ -62,8 +79,19 @@ if not DEBUG:
         device = devices[device_id]
         print(f"Selected device [{device_id}]: {device['name']}")
         print(f"Output channels: {device['max_output_channels']}")
+
+        if device['max_output_channels'] < NUMBER_ACTUATORS:
+            raise RuntimeError(
+                f"Device '{device['name']}' only has "
+                f"{device['max_output_channels']} output channels, "
+                f"need {NUMBER_ACTUATORS}."
+            )
         sd.default.device = (None, device_id)
 
+
+import threading as _threading
+
+_array_lock = _threading.Lock()
 
 def audio_callback(outdata, frames, time, status):
     global phase, amplitude_array
@@ -71,33 +99,43 @@ def audio_callback(outdata, frames, time, status):
         print("Stream status:", status)
     outdata.fill(0)
     frames_processed = 0
-    while len(amplitude_array) > 0 and frames_processed < frames:
-        duration = amplitude_array[0][0]
-        remaining_frames = frames - frames_processed
-        this_frames = min(duration, remaining_frames)
-        t = (np.arange(this_frames) + phase) * phase_increment
-        phase += this_frames
-        sine_wave = np.sin(t)
-        channel_data = amplitude_array[0][1:]
-        for i, amplitude in enumerate(channel_data):
-            if i < len(MAPPING):
-                outdata[frames_processed:frames_processed + this_frames,
-                        MAPPING[i]] = sine_wave * amplitude
-        frames_processed += this_frames
-        amplitude_array[0][0] -= this_frames
-        if amplitude_array[0][0] <= 0:
-            amplitude_array.pop(0)
+
+    with _array_lock:
+        while len(amplitude_array) > 0 and frames_processed < frames:
+            duration = amplitude_array[0][0]
+            remaining_frames = frames - frames_processed
+            this_frames = min(duration, remaining_frames)
+            t = (np.arange(this_frames) + phase) * phase_increment
+            phase += this_frames
+            sine_wave = np.sin(t)
+            channel_data = amplitude_array[0][1:]
+            for i, amplitude in enumerate(channel_data):
+                if i < len(MAPPING):
+                    outdata[frames_processed:frames_processed + this_frames,
+                            MAPPING[i]] = sine_wave * amplitude
+            frames_processed += this_frames
+            amplitude_array[0][0] -= this_frames
+            if amplitude_array[0][0] <= 0:
+                amplitude_array.pop(0)
 
 
 async def handler(websocket):
     print("Client connected.")
-    global amplitude_array, df
-    amplitude_array = []
+    global amplitude_array, phase, df
+
+    # Reset state on new connection
+    with _array_lock:
+        amplitude_array = []
+        phase = 0.0
+
     async for message in websocket:
         data = json.loads(message)
         print("Received data:", data)
         duration = int(data["duration"] * SAMPLE_RATE / 1000)
-        amplitude_array.append([duration] + data["amplitudes"])
+
+        with _array_lock:
+            amplitude_array.append([duration] + data["amplitudes"])
+
         timestamp = data["timestamp"]
         device_type = data["device"]
         new_data = pd.DataFrame([{
