@@ -1,0 +1,17 @@
+# Stable ALSA card names for the two haptic USB sound cards.
+#
+# The CM106 USB cards have NO unique serial, so they can only be told apart by
+# WHICH USB PORT they're plugged into. Naming is therefore POSITIONAL — keep
+# each PCB in a fixed hub port (label them!).
+#
+# To set this up for YOUR rig:
+#   1. cat /proc/asound/cards
+#      e.g.  "... ICUSBAUDIO7D at usb-3f980000.usb-1.2.2, full speed"  -> port 1-1.2.2
+#   2. Put the LOWER/ground-belt PCB's port in the HapticPCB1 line, and the
+#      UPPER/elevated-belt PCB's port in the HapticPCB2 line.
+#   3. Reboot, then `cat /proc/asound/cards` should show HapticPCB1 + HapticPCB2.
+#      If Lower/Upper end up swapped in the app, swap the two PCBs' ports.
+#
+# The example ports below are from one rig (multi-TT hub) — change to match yours.
+SUBSYSTEM=="sound", ACTION=="add", DEVPATH=="*/1-1.2.2*", ATTR{id}="HapticPCB1"
+SUBSYSTEM=="sound", ACTION=="add", DEVPATH=="*/1-1.2.1*", ATTR{id}="HapticPCB2"

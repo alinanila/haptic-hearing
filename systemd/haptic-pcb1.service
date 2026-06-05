@@ -1,0 +1,15 @@
+[Unit]
+Description=Haptic belt 1 / PCB1 (lower - ground obstacles) - ws :8000
+After=sound.target network-online.target
+Wants=network-online.target
+
+[Service]
+# __USER__ / __REPO_DIR__ / __PYTHON__ are filled in by install.sh.
+User=__USER__
+WorkingDirectory=__REPO_DIR__
+ExecStart=__PYTHON__ server.py .env.pcb1
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
